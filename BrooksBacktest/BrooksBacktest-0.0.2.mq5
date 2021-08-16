@@ -8,7 +8,7 @@
 #property tester_file "win2021.04.01-2021.04.30.csv"
 
 #include <Trade\Trade.mqh>
-#include <Dev\Brooks\AlwaysInEnum.mqh>
+#include <Dev\Brooks\Enums.mqh>
 #include <Dev\Brooks\CheckDirection.mqh>
 
 //--- input parameters
