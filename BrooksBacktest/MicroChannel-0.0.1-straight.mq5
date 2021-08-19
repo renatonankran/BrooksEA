@@ -1,45 +1,32 @@
 //+------------------------------------------------------------------+
-//|                                                 brooks-0.0.1.mq5 |
+//|                                           MicroChannel-0.0.1.mq5 |
 //|                                  Copyright 2021, MetaQuotes Ltd. |
 //|                                             https://www.mql5.com |
-//+------------------------------------------------------------------+
+// +------------------------------------------------------------------+
 #property copyright "Copyright 2021, MetaQuotes Ltd."
 #property link "https://www.mql5.com"
-#property tester_file "win2021.04.01-2021.04.30.csv"
-
+#property version "1.01"
+#include <Dev\Brooks\Features.mqh>
 #include <Trade\Trade.mqh>
-#include <Dev\Brooks\Enums.mqh>
-#include <Dev\Brooks\CheckDirection.mqh>
 
-//--- input parameters
-input datetime start_time = D '2021.04.01 09:00:00';
-input datetime end_time = D '2021.04.30 17:50:00';
-input int maxStop = 500;
+input double maxStop = 1000;
+input datetime start_time = D'2021.04.05';
 
-//+------------------------------------------------------------------+
-//| Global Variables                                                 |
-//+------------------------------------------------------------------+
-
-ALWAYS_IN Direction = ALWAYS_IN_RANGE;
-double lotSize = 1;
-long lastCandleTimeStamp = 0;
-long magicNumber = 0;
-double tickSize = 0;
+double lot_size = 1;
+datetime lastCandleTimeStamp;
+MqlDateTime day;
 int candleCount = 0;
-
+MicroChannelStruc micro_channel;
+double tick_size;
 CTrade Trade;
-CCheckDirection CheckDirection(start_time, end_time);
-
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
 {
   //---
-  CheckDirection.LoadFile("win");
-  tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-  //--- create application dialog
-
+  tick_size = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+  TimeToStruct(start_time, day);
   //---
   return (INIT_SUCCEEDED);
 }
@@ -48,17 +35,7 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-  //--- clear comments
-  Comment("");
-}
-//+------------------------------------------------------------------+
-//| Expert chart event function                                      |
-//+------------------------------------------------------------------+
-void OnChartEvent(const int id,         // event ID
-                  const long &lparam,   // event parameter of the long type
-                  const double &dparam, // event parameter of the double type
-                  const string &sparam) // event parameter of the string type
-{
+  //---
 }
 //+------------------------------------------------------------------+
 //| Expert tick function                                             |
@@ -66,48 +43,66 @@ void OnChartEvent(const int id,         // event ID
 void OnTick()
 {
   //---
-  bool newCandle = NewCandle();
   int openPosition = PositionsTotal();
   ClosePositionAtDayEnd();
-  if (newCandle && !openPosition && !IsDayEnd())
+  if (NewCandle() && candleCount > 3 && !openPosition && !IsDayEnd())
   {
+    IsNewDay();
 
-    int gap = Gap();
+    micro_channel = MicroChannel(3, micro_channel);
 
-    if (gap == POSITION_TYPE_SELL)
+    if (micro_channel.ChannelOrientation == BEAR_MC)
     {
 
-      double sl = GetStops(POSITION_TYPE_SELL);
-      double tp = GetTake(POSITION_TYPE_SELL);
+      double sl = GetStops(POSITION_TYPE_SELL, micro_channel.size);
+      double tp = GetTake(POSITION_TYPE_SELL, micro_channel.size);
       if (getStopSize(iOpen(_Symbol, _Period, 0), sl) >= maxStop)
         return;
-
-      Trade.Sell(lotSize, _Symbol, 0, sl, tp);
+      ClosePositions();
+      Trade.Sell(lot_size, _Symbol, 0, sl, tp);
     }
-    if (gap == POSITION_TYPE_BUY)
+    if (micro_channel.ChannelOrientation == BULL_MC)
     {
 
-      double sl = GetStops(POSITION_TYPE_BUY);
-      double tp = GetTake(POSITION_TYPE_BUY);
+      double sl = GetStops(POSITION_TYPE_BUY, micro_channel.size);
+      double tp = GetTake(POSITION_TYPE_BUY, micro_channel.size);
       if (getStopSize(iOpen(_Symbol, _Period, 0), sl) >= maxStop)
         return;
-
-      Trade.Buy(lotSize, _Symbol, 0, sl, tp);
+      ClosePositions();
+      Trade.Buy(lot_size, _Symbol, 0, sl, tp);
     }
   }
 }
 
 //+------------------------------------------------------------------+
+//|                                                                  |
+//+------------------------------------------------------------------+
+bool NewCandle()
+{
+  datetime currentTimeStamp = iTime(_Symbol, _Period, 0);
+  if (currentTimeStamp != lastCandleTimeStamp)
+  {
+    lastCandleTimeStamp = currentTimeStamp;
+    candleCount++;
+    return true;
+  }
+  return false;
+}
 
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-void ClosePositionAtDayEnd()
+double IsNewDay()
 {
-  if (PositionsTotal() > 0 && IsDayEnd())
+  MqlDateTime current;
+  TimeToStruct(TimeCurrent(), current);
+  if (day.day != current.day)
   {
-    Trade.PositionClose(_Symbol);
+    day.day = current.day;
+    candleCount = 0;
+    return true;
   }
+  return false;
 }
 
 //+------------------------------------------------------------------+
@@ -132,83 +127,44 @@ bool IsDayEnd()
 
   return false;
 }
+
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-int Gap()
+void ClosePositionAtDayEnd()
 {
-  if (candleCount > 3)
+  if (PositionsTotal() > 0 && IsDayEnd())
   {
-    ALWAYS_IN direction = CheckDirection.Direction(iTime(_Symbol, _Period, 0));
-    if (direction == ALWAYS_IN_SHORT && IsBearBar(2) && IsBearBar(3))
-    {
-      if (iHigh(_Symbol, _Period, 1) < iLow(_Symbol, _Period, 3))
-      {
-        return POSITION_TYPE_SELL;
-      }
-    }
-
-    if (direction == ALWAYS_IN_LONG && IsBullBar(2) && IsBullBar(3))
-    {
-      if (iLow(_Symbol, _Period, 1) > iHigh(_Symbol, _Period, 3))
-      {
-        return POSITION_TYPE_BUY;
-      }
-    }
+    Trade.PositionClose(_Symbol);
   }
-  return -1;
 }
 
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-bool IsBullBar(int index)
+void ClosePositions()
 {
-  if (iOpen(_Symbol, _Period, index) < iClose(_Symbol, _Period, index))
-    return true;
-  return false;
-}
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-bool IsBearBar(int index)
-{
-  if (iOpen(_Symbol, _Period, index) > iClose(_Symbol, _Period, index))
-    return true;
-  return false;
-}
-//+------------------------------------------------------------------+
-//|                                                                  |
-//+------------------------------------------------------------------+
-bool NewCandle()
-{
-  long currentTimeStamp = iTime(_Symbol, _Period, 0);
-  if (currentTimeStamp != lastCandleTimeStamp)
+  if (PositionsTotal() > 0)
   {
-    lastCandleTimeStamp = currentTimeStamp;
-    candleCount++;
-    return true;
+    Trade.PositionClose(_Symbol);
   }
-  return false;
 }
-
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-double GetStops(ENUM_POSITION_TYPE positionType)
+double GetStops(ENUM_POSITION_TYPE positionType, int index)
 {
   if (positionType == POSITION_TYPE_BUY)
   {
-    return iLow(_Symbol, _Period, 2) - tickSize;
+    return iLow(_Symbol, _Period, index) - tick_size;
   }
   if (positionType == POSITION_TYPE_SELL)
   {
-    return iHigh(_Symbol, _Period, 2) + tickSize;
+    return iHigh(_Symbol, _Period, index) + tick_size;
   }
 
   return 0;
 }
-
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
@@ -219,17 +175,17 @@ double getStopSize(double open, double sl)
 //+------------------------------------------------------------------+
 //|                                                                  |
 //+------------------------------------------------------------------+
-double GetTake(ENUM_POSITION_TYPE positionType)
+double GetTake(ENUM_POSITION_TYPE positionType, int index)
 {
   if (positionType == POSITION_TYPE_BUY)
   {
-    double stopSize = GetStops(POSITION_TYPE_BUY);
+    double stopSize = GetStops(POSITION_TYPE_BUY, index);
     double takeProfit = iOpen(_Symbol, _Period, 0) - stopSize;
     return iOpen(_Symbol, _Period, 0) + takeProfit;
   }
   if (positionType == POSITION_TYPE_SELL)
   {
-    double stopSize = GetStops(POSITION_TYPE_SELL);
+    double stopSize = GetStops(POSITION_TYPE_SELL, index);
     double takeProfit = stopSize - iOpen(_Symbol, _Period, 0);
     return iOpen(_Symbol, _Period, 0) - takeProfit;
   }

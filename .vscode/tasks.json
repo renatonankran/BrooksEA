@@ -1,0 +1,38 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "MQL-Compile",
+            "dependsOn":"sleep",
+            "presentation": {
+               "echo": true,
+               "reveal": "always",
+               "focus": true,
+               "panel": "shared"
+            },
+            "group": {
+               "kind": "build",
+               "isDefault": true
+            },
+            "promptOnClose": true,
+            "type": "shell",
+            "command": "type ${workspaceRoot}\\${fileBasenameNoExtension}.log; del ${workspaceRoot}\\${fileBasenameNoExtension}.log",
+         },
+         {
+            "label": "sleep",
+            "type": "shell",
+            "command": "timeout 2",
+            "dependsOn":"compile"
+         },
+         {
+            "label": "compile",
+            "type": "shell",
+            "command": "C:\\Program Files\\MetaTrader 5 Terminal\\metaeditor64.exe",
+            "args": [
+               "/compile:${file}",
+               "/inc:C:/Users/RNM/AppData/Roaming/MetaQuotes/Terminal/FB9A56D617EDDDFE29EE54EBEFFE96C1/MQL5/",
+               "/log:${workspaceRoot}\\${fileBasenameNoExtension}.log",
+            ],
+         }
+    ]
+}
